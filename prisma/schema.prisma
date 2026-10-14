@@ -18,6 +18,45 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   auditLogs    AuditLog[]
+  products     Product[]
+  licenses     License[]
+}
+
+model Product {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  ownerId     String
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  licenses    License[]
+  @@index([ownerId, createdAt])
+}
+
+model License {
+  id           String        @id @default(cuid())
+  key          String        @unique
+  duration     LicensePeriod
+  status       LicenseStatus @default(ACTIVE)
+  hwidRequired Boolean       @default(false)
+  hwid         String?
+  expiresAt    DateTime?
+  createdAt    DateTime      @default(now())
+  productId    String
+  product      Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ownerId      String
+  owner        User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  @@index([ownerId, createdAt])
+  @@index([productId, status])
+}
+
+model SiteConfig {
+  id          String   @id @default("main")
+  siteName    String   @default("NEXUS PLATFORM")
+  announcement String  @default("")
+  supportEmail String  @default("")
+  updatedAt   DateTime @updatedAt
 }
 
 model AuditLog {
@@ -37,4 +76,16 @@ enum Role {
 enum UserStatus {
   ACTIVE
   SUSPENDED
+}
+
+enum LicensePeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  LIFETIME
+}
+
+enum LicenseStatus {
+  ACTIVE
+  REVOKED
 }
