@@ -1,38 +1,33 @@
 # Nexus Dashboard
 
-Dashboard full-stack em Next.js, TypeScript, Prisma e SQLite, com interface em português, área administrativa, área de usuário e API própria.
-
-## Requisitos
-- Node.js 20.9+
-- npm
+Dashboard full-stack em Next.js, TypeScript, Prisma e SQLite, com autenticação, painel administrativo, gerenciamento de produtos e licenças.
 
 ## Configuração local
 
-```bash
-npm install
-cp .env.example .env
-```
+Crie um arquivo .env na raiz com DATABASE_URL="file:./dev.db", AUTH_SECRET com uma chave aleatória forte, ADMIN_EMAIL e ADMIN_PASSWORD. Opcionalmente, configure OPENAI_API_KEY e OPENAI_MODEL para ativar respostas de IA no suporte.
 
-No Windows PowerShell, copie `.env.example` para `.env` manualmente. Defina `AUTH_SECRET` com uma chave aleatória forte e altere `ADMIN_PASSWORD`.
+Execute no PowerShell:
 
-```bash
-npx prisma generate
-npx prisma db push
-npm run db:seed
-npm run dev
-```
+    npm install
+    npx prisma generate
+    npx prisma db push
+    npm run db:seed
+    npm run dev
 
-Acesse `http://localhost:3000`. A conta inicial usa `ADMIN_EMAIL` e `ADMIN_PASSWORD` definidos no `.env`. O seed cria a conta administrativa somente se ela ainda não existir; não substitui credenciais existentes.
+Acesse http://localhost:3000. A conta inicial usa ADMIN_EMAIL e ADMIN_PASSWORD. O seed não substitui a senha de uma conta existente.
 
-## API
-- `POST /api/auth/login` — autenticação por e-mail e senha.
-- `POST /api/auth/logout` — encerra a sessão.
-- `GET /api/auth/me` — usuário autenticado.
-- `GET /api/dashboard` — dados de dashboard conforme o perfil.
-- `GET /api/admin/users` — listagem administrativa (admin).
-- `PATCH /api/admin/users` — atualiza status, plano ou perfil (admin).
+## Recursos
+
+- Login e logout com cookie HttpOnly.
+- Admin: criar usuários, alterar perfil/plano e suspender ou reativar contas.
+- Tema claro/escuro com preferência salva no navegador.
+- Produtos: usuários podem cadastrar seus próprios produtos.
+- Licenças: gerar até 50 chaves por operação, com duração diária, semanal, mensal ou lifetime, opção de HWID obrigatório, listagem e exclusão.
+- Validação online: POST /api/licenses/validate com key e, quando necessário, hwid. O primeiro HWID válido é vinculado à licença.
+- Suporte em /support. Sem OPENAI_API_KEY usa a central de ajuda; com a chave, tenta responder via IA.
+- Admin: /admin/site permite alterar nome público, aviso e e-mail de suporte. Alterações no código/layout exigem atualizar o repositório e fazer deploy.
+- API de produtos: GET/POST /api/products. API de licenças: GET/POST/DELETE /api/licenses.
 
 ## Segurança e produção
-Senhas são armazenadas com hash bcrypt; a sessão usa JWT assinado em cookie `HttpOnly`, `SameSite=Lax` e `Secure` em produção. As rotas administrativas validam a função no servidor. Para implantação pública, configure HTTPS, `AUTH_SECRET` forte, limitação de tentativas de login, proteção CSRF/origin nas rotas de mutação, monitoramento e backup. SQLite é adequado para desenvolvimento e instâncias simples; em implantação com múltiplas instâncias, configure PostgreSQL e uma `DATABASE_URL` apropriada no schema Prisma.
 
-A interface já consome a API real para login, estatísticas e gerenciamento de usuários. Não inclui pagamento, envio de e-mail ou provedor OAuth sem configuração adicional.
+Antes de publicar, use HTTPS, AUTH_SECRET forte, banco gerenciado para múltiplas instâncias, rate limiting em login e validação de licenças, proteção CSRF/origin, monitoramento e backups. Nunca exponha OPENAI_API_KEY no navegador. A validação de licença deve receber rate limiting antes de uso comercial em larga escala.
