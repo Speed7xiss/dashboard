@@ -1,7 +1,65 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-export async function GET() { const admin = await requireAdmin(); if (!admin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 }); const users = await prisma.user.findMany({ select: { id:true,name:true,email:true,role:true,status:true,plan:true,createdAt:true }, orderBy: { createdAt: "desc" }, take: 200 }); return NextResponse.json({ users }); }
-const updateSchema = z.object({ status: z.enum(["ACTIVE","SUSPENDED"]).optional(), role: z.enum(["USER","ADMIN"]).optional(), plan: z.string().min(1).max(40).optional() });
-export async function PATCH(request: Request) { const admin = await requireAdmin(); if (!admin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 }); const body = await request.json().catch(() => null); const parsed = z.object({ id: z.string(), ...updateSchema.shape }).safeParse(body); if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 }); if (parsed.data.id === admin.id && (parsed.data.status === "SUSPENDED" || parsed.data.role === "USER")) return NextResponse.json({ error: "Não é possível remover seu próprio acesso administrativo." }, { status: 400 }); const { id, ...data } = parsed.data; const user = await prisma.user.update({ where: { id }, data, select: { id:true,name:true,email:true,role:true,status:true,plan:true } }).catch(() => null); if (!user) return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 }); await prisma.auditLog.create({ data: { userId: admin.id, action: "USER_UPDATED", details: `Usuário ${id} atualizado` } }); return NextResponse.json({ user }); }
+
+export async function GET() {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  const users = await prisma.user.findMany({
+    select: { id: true, name: true, email: true, role: true, status: true, plan: true, createdAt: true },
+    orderBy: { createdAt: "desc" }, take: 200
+  });
+  return NextResponse.json({ users });
+}
+
+const createSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(8).max(128),
+  role: z.enum(["USER", "ADMIN"]).optional(),
+  plan: z.string().trim().min(1).max(40).optional()
+});
+
+export async function POST(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  const parsed = createSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Informe nome, e-mail e uma senha de pelo menos 8 caracteres." }, { status: 400 });
+  const email = parsed.data.email.toLowerCase();
+  if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) {
+    return NextResponse.json({ error: "Já existe uma conta com esse e-mail." }, { status: 409 });
+  }
+  const user = await prisma.user.create({
+    data: { name: parsed.data.name, email, passwordHash: await bcrypt.hash(parsed.data.password, 12), role: parsed.data.role ?? "USER", plan: parsed.data.plan ?? "Free" },
+    select: { id: true, name: true, email: true, role: true, status: true, plan: true, createdAt: true }
+  });
+  await prisma.auditLog.create({ data: { userId: admin.id, action: "USER_CREATED", details: `Conta criada para ${email}` } });
+  return NextResponse.json({ user }, { status: 201 });
+}
+
+const updateSchema = z.object({
+  status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+  role: z.enum(["USER", "ADMIN"]).optional(),
+  plan: z.string().trim().min(1).max(40).optional()
+});
+
+export async function PATCH(request: Request) {
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  const body = await request.json().catch(() => null);
+  const parsed = z.object({ id: z.string(), ...updateSchema.shape }).safeParse(body);
+  if (!parsed.success) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+  if (parsed.data.id === admin.id && (parsed.data.status === "SUSPENDED" || parsed.data.role === "USER")) {
+    return NextResponse.json({ error: "Não é possível remover seu próprio acesso administrativo." }, { status: 400 });
+  }
+  const { id, ...data } = parsed.data;
+  const user = await prisma.user.update({
+    where: { id }, data,
+    select: { id: true, name: true, email: true, role: true, status: true, plan: true }
+  }).catch(() => null);
+  if (!user) return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
+  await prisma.auditLog.create({ data: { userId: admin.id, action: "USER_UPDATED", details: `Usuário ${id} atualizado` } });
+  return NextResponse.json({ user });
+}
